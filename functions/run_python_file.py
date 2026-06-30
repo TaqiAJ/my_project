@@ -1,12 +1,12 @@
 import os
 import subprocess
+from google.genai import types
 
 def run_python_file(
     working_directory: str, file_path: str, args: list[str] | None = None
 ) -> str:
     try:
         abs_working_dir = os.path.abspath(working_directory)
-
         absolute_file_path = os.path.abspath(os.path.join(abs_working_dir, file_path))
 
         if not absolute_file_path.startswith(abs_working_dir + os.sep) and absolute_file_path != abs_working_dir:
@@ -51,3 +51,24 @@ def run_python_file(
 
     except Exception as e:
         return f"Error: executing Python file: {e}"
+
+
+schema_run_python_file = types.FunctionDeclaration(
+    name="run_python_file",
+    description="Executes a specified Python script file within the workspace environment.",
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "file_path": types.Schema(
+                type=types.Type.STRING,
+                description="The relative path to the Python script to run.",
+            ),
+            "args": types.Schema(
+                type=types.Type.ARRAY,
+                items=types.Schema(type=types.Type.STRING),
+                description="Optional list of command line arguments to pass to the script.",
+            ),
+        },
+        required=["file_path"],
+    ),
+)
