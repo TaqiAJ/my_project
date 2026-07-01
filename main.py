@@ -4,7 +4,7 @@ import system_prompt
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from call_function import available_functions
+from call_function import available_functions, call_function   # ← import call_function
 
 
 def main() -> None:
@@ -31,7 +31,6 @@ def main() -> None:
 def generate_content(
     client: genai.Client, messages: list[types.Content], verbose: bool
 ) -> None:
-    # Fix: Move tools INSIDE the GenerateContentConfig object
     response = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=messages,
@@ -47,14 +46,36 @@ def generate_content(
     if verbose:
         print("Prompt tokens:", response.usage_metadata.prompt_token_count)
         print("Response tokens:", response.usage_metadata.candidates_token_count)
-        
-    print("Response:")
-    
-    # Fix: Implement Step 5 response parsing logic
+
+    # Check if there are function calls
     if response.function_calls:
+        function_results = []   # collect parts for later use
+
         for function_call in response.function_calls:
-            print(f"Calling function: {function_call.name}({function_call.args})")
+            # Step 10: call our helper instead of just printing
+            function_call_result = call_function(function_call, verbose=verbose)
+
+            # Validate the result
+            if not function_call_result.parts:
+                raise RuntimeError("Function call returned no parts.")
+            func_response = function_call_result.parts[0].function_response
+            if func_response is None:
+                raise RuntimeError("Function response is None.")
+            result_data = func_response.response
+            if result_data is None:
+                raise RuntimeError("Function response data is None.")
+
+            # Store the part for later (if needed)
+            function_results.append(function_call_result.parts[0])
+
+            # Verbose output of the result (Step 10.5)
+            if verbose:
+                print(f"-> {result_data}")
+
+        # (Optional) You could also print a summary of all results
+        # For now, we just print them as they come (already done)
     else:
+        # No function calls, just print the text response
         print(response.text)
 
 
