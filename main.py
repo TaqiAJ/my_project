@@ -4,7 +4,7 @@ import system_prompt
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from call_function import available_functions, call_function   # ← import call_function
+from call_function import available_functions, call_function
 
 
 def main() -> None:
@@ -19,64 +19,70 @@ def main() -> None:
         raise RuntimeError("GEMINI_API_KEY environment variable not set")
 
     client = genai.Client(api_key=api_key)
+
+    # Initialize conversation with the user's prompt
     messages: list[types.Content] = [
         types.Content(role="user", parts=[types.Part(text=args.user_prompt)])
     ]
+
     if args.verbose:
         print(f"User prompt: {args.user_prompt}\n")
 
-    generate_content(client, messages, args.verbose)
-
-
-def generate_content(
-    client: genai.Client, messages: list[types.Content], verbose: bool
-) -> None:
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=messages,
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt.system_prompt,
-            tools=[available_functions]
-        ),
+    # Reusable config (system instruction + tools)
+    config = types.GenerateContentConfig(
+        system_instruction=system_prompt.system_prompt,
+        tools=[available_functions],
     )
 
-    if not response.usage_metadata:
-        raise RuntimeError("Gemini API response appears to be malformed")
+    # Main agent loop – max 20 iterations
+    for iteration in range(20):
+        if args.verbose:
+            print(f"\n--- Iteration {iteration + 1} ---")
 
-    if verbose:
-        print("Prompt tokens:", response.usage_metadata.prompt_token_count)
-        print("Response tokens:", response.usage_metadata.candidates_token_count)
+        # 1. Call the model with the current conversation
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=messages,
+            config=config,
+        )
 
-    # Check if there are function calls
-    if response.function_calls:
-        function_results = []   # collect parts for later use
+        # 2. Append the model's response(s) to the conversation
+        if response.candidates:
+            for candidate in response.candidates:
+                if candidate.content:
+                    messages.append(candidate.content)
+        else:
+            print("No candidates in response. Exiting.")
+            break
 
-        for function_call in response.function_calls:
-            # Step 10: call our helper instead of just printing
-            function_call_result = call_function(function_call, verbose=verbose)
+        # 3. Check if the model requested function calls
+        if response.function_calls:
+            # Collect tool response parts from each function call
+            tool_parts = []
+            for function_call in response.function_calls:
+                result_content = call_function(function_call, verbose=args.verbose)
 
-            # Validate the result
-            if not function_call_result.parts:
-                raise RuntimeError("Function call returned no parts.")
-            func_response = function_call_result.parts[0].function_response
-            if func_response is None:
-                raise RuntimeError("Function response is None.")
-            result_data = func_response.response
-            if result_data is None:
-                raise RuntimeError("Function response data is None.")
+                # Validate the result (should have a non‑empty parts list)
+                if not result_content.parts:
+                    raise RuntimeError("Function call returned no parts.")
 
-            # Store the part for later (if needed)
-            function_results.append(function_call_result.parts[0])
+                # We expect exactly one part (the function response)
+                # Add it to the list of tool parts
+                tool_parts.append(result_content.parts[0])
 
-            # Verbose output of the result (Step 10.5)
-            if verbose:
-                print(f"-> {result_data}")
+            # 4. Append the tool results as a new user message
+            messages.append(types.Content(role="user", parts=tool_parts))
 
-        # (Optional) You could also print a summary of all results
-        # For now, we just print them as they come (already done)
+        else:
+            if response.text:
+                print("Final response:")
+                print(response.text)
+            else:
+                print("No response text from model.")
+            break
     else:
-        # No function calls, just print the text response
-        print(response.text)
+        print("Maximum iterations (20) reached without final response.")
+        exit(1)
 
 
 if __name__ == "__main__":
