@@ -1,11 +1,7 @@
 import os
-from google.genai import types
-
 
 def get_files_info(working_directory: str, directory: str = ".") -> str:
     try:
-        
-        
         abs_working_dir = os.path.abspath(working_directory)
         target_dir = os.path.normpath(os.path.join(abs_working_dir, directory))
 
@@ -30,16 +26,21 @@ def get_files_info(working_directory: str, directory: str = ".") -> str:
     except Exception as e:
         return f"Error listing files: {e}"
 
-schema_get_files_info = types.FunctionDeclaration(
-    name="get_files_info",
-    description="Lists files in a specified directory relative to the working directory.",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "directory": types.Schema(
-                type=types.Type.STRING,
-                description="Directory path to list files for.",
-            ),
+# Standard OpenAI/OpenRouter schema format (no google-genai dependency required!)
+schema_get_files_info = {
+    "type": "function",
+    "function": {
+        "name": "get_files_info",
+        "description": "Lists files in a specified directory relative to the working directory.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "directory": {
+                    "type": "string",
+                    "description": "Directory path to list files for, relative to current directory.",
+                },
+            },
+            "required": [],  # Let it default to "." if Gemini doesn't provide it
         },
-    ),
-)
+    }
+}

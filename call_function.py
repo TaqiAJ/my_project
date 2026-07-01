@@ -1,26 +1,25 @@
-from google.genai import types
+import json
 from collections.abc import Callable
 
-# Import the schemas for the tool definition (already present)
+# Import the raw JSON schemas you just converted
 from functions.get_files_info import schema_get_files_info
 from functions.get_file_content import schema_get_file_content
 from functions.run_python_file import schema_run_python_file 
 from functions.write_file import schema_write_file
 
-# Import the actual callable functions (needed for execution)
+# Import the actual callable functions
 from functions.get_files_info import get_files_info
 from functions.get_file_content import get_file_content
 from functions.run_python_file import run_python_file
 from functions.write_file import write_file
 
-available_functions = types.Tool(
-    function_declarations=[
-        schema_get_files_info,
-        schema_get_file_content,
-        schema_run_python_file,
-        schema_write_file,
-    ],
-)
+# Clean List structure instead of types.Tool
+available_functions = [
+    schema_get_files_info,
+    schema_get_file_content,
+    schema_run_python_file,
+    schema_write_file,
+]
 
 function_map: dict[str, Callable[..., str]] = {
     "get_file_content": get_file_content,
@@ -30,46 +29,49 @@ function_map: dict[str, Callable[..., str]] = {
 }
 
 # --- The main helper ---
-def call_function(
-    function_call: types.FunctionCall, verbose: bool = False
-) -> types.Content:
-    # Print function name (and args if verbose)
-    if verbose:
-        print(f"Calling function: {function_call.name}{function_call.args}")
+def call_function(tool_call, verbose: bool = False) -> dict:
+    """
+    Accepts an OpenAI ChatCompletionMessageToolCall object, 
+    executes it locally, and structures a standard tool response dictionary.
+    """
+    function_name = tool_call.function.name or ""
+    
+    # Handle incoming arguments (OpenAI sends them as a JSON string)
+    if isinstance(tool_call.function.arguments, str):
+        try:
+            args = json.loads(tool_call.function.arguments)
+        except Exception:
+            args = {}
     else:
-        print(f" - Calling function: {function_call.name}")
+        args = dict(tool_call.function.arguments) if tool_call.function.arguments else {}
 
-    # Safely get the function name (in case it's None)
-    function_name = function_call.name or ""
+    if verbose:
+        print(f"Calling function: {function_name}({args})")
+    else:
+        print(f" - Calling function: {function_name}")
 
     # Check if the function exists in our map
     if function_name not in function_map:
-        return types.Content(
-            role="tool",
-            parts=[
-                types.Part.from_function_response(
-                    name=function_name,
-                    response={"error": f"Unknown function: {function_name}"},
-                )
-            ],
-        )
+        return {
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "name": function_name,
+            "content": json.dumps({"error": f"Unknown function: {function_name}"})
+        }
 
-    # Copy the arguments (or empty dict if None)
-    args = dict(function_call.args) if function_call.args else {}
-
-    # Overwrite working_directory
+    # Inject the working directory manually
     args["working_directory"] = "./calculator"
 
-    # Call the actual function with the (now modified) arguments
-    function_result = function_map[function_name](**args)
+    try:
+        # Call the actual Python execution function dynamically
+        function_result = function_map[function_name](**args)
+    except Exception as e:
+        function_result = f"Error during local execution: {str(e)}"
 
-    # Return the successful result
-    return types.Content(
-        role="tool",
-        parts=[
-            types.Part.from_function_response(
-                name=function_name,
-                response={"result": function_result},
-            )
-        ],
-    )
+    # Return standard OpenAI role='tool' message dictionary format
+    return {
+        "role": "tool",
+        "tool_call_id": tool_call.id,
+        "name": function_name,
+        "content": json.dumps({"result": function_result})
+    }

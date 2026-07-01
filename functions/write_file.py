@@ -1,5 +1,4 @@
 import os
-from google.genai import types
 
 def write_file(working_directory: str, file_path: str, content: str) -> str:
     try:
@@ -30,22 +29,25 @@ def write_file(working_directory: str, file_path: str, content: str) -> str:
         return f"Error: {str(e)}"
 
 
-# --- ADD THE SCHEMA BELOW ---
-schema_write_file = types.FunctionDeclaration(
-    name="write_file",
-    description="Creates a new file or overwrites an existing file with specific text content inside the workspace.",
-    parameters=types.Schema(
-        type=types.Type.OBJECT,
-        properties={
-            "file_path": types.Schema(
-                type=types.Type.STRING,
-                description="The relative destination path of the file to create or overwrite.",
-            ),
-            "content": types.Schema(
-                type=types.Type.STRING,
-                description="The raw text content or code to write into the file.",
-            ),
+# Standard OpenAI/OpenRouter schema format
+schema_write_file = {
+    "type": "function",
+    "function": {
+        "name": "write_file",
+        "description": "Creates a new file or overwrites an existing file with specific text content inside the workspace.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "The relative destination path of the file to create or overwrite.",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The raw text content or code to write into the file.",
+                },
+            },
+            "required": ["file_path", "content"],
         },
-        required=["file_path", "content"],
-    ),
-)
+    }
+}
